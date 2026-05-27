@@ -53,13 +53,11 @@ for root, dirs, files in os.walk(current_dir):
 if l2_file is None:
     st.error("⚠️ フォルダ内に『デモデータ』のファイルが見つかりません。")
 else:
-    # 📄 【超強化】拡張子に騙されず、中身がExcelかCSVかを力技で自動判別して読み込む処理
+    # 📄 中身がExcelかCSVかを力技で自動判別して読み込む
     try:
-        # まずはExcelとして読み込んでみる
         df_l2 = pd.read_excel(l2_file, header=1).fillna("")
     except Exception:
         try:
-            # Excelでエラーが出たら、拡張子が.xlsxでも中身はCSVとみなして読み込む（今回の救済ルート）
             df_l2 = pd.read_csv(l2_file, header=1).fillna("")
         except Exception as e:
             st.error(f"ファイルの読み込みに致命的なエラーが発生しました: {e}")
@@ -81,6 +79,7 @@ else:
 
         if not l2_result.empty:
             st.success(f"🗺️ 指定された住所周辺の公共データが {len(l2_result)} 件ヒットしました。")
+            
             for idx, l2_row in l2_result.iterrows():
                 target_address = str(l2_row[addr_col]).strip()
                 
@@ -134,15 +133,15 @@ else:
                         detail_df = pd.DataFrame(l2_row).rename(columns={idx: "詳細データ"})
                         st.dataframe(detail_df, use_container_width=True)
 
+                # 🔥 【修正位置】企業スキャンとダウンロード処理を、確実にtarget_addressが使えるループの内側に格納しました
                 matched_company_name = None
                 matched_company_df = None
                 for comp_file in paid_company_files:
                     try:
-                        # 有料データ側も同様に、エラーが出たら自動でCSV判定する
-                        try:
-                            df_comp_master = pd.read_excel(comp_file).fillna("")
-                        except:
+                        if comp_file.endswith(".csv"):
                             df_comp_master = pd.read_csv(comp_file).fillna("")
+                        else:
+                            df_comp_master = pd.read_excel(comp_file).fillna("")
                             
                         comp_addr_col = None
                         for c in df_comp_master.columns:
@@ -193,4 +192,3 @@ else:
                 st.markdown("---")
         else:
             st.warning(f"「{search_query}」に一致する公共データが登録されていません。別のキーワードをお試しください。")
-            
