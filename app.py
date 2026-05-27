@@ -38,20 +38,40 @@ st.write("【公共データ × 有料データ 統合デモ画面】")
 # ファイルの探索ルートを現在のフォルダに変更（Streamlit Cloud対応）
 current_dir = os.path.dirname(__file__) if "__file__" in locals() else "."
 
-l2_excel_file = None
+l2_file = None
+is_csv = False
 paid_company_files = []
 
+# 📁 ファイルの自動探索（【強化】スペースや文字のズレを完全に無視して「デモデータ」という文字だけで探します）
 for root, dirs, files in os.walk(current_dir):
     for f_name in files:
-        if "デモデータ" in f_name and f_name.endswith(".xlsx"): 
-            l2_excel_file = os.path.join(root, f_name)
-        if "有料データ_" in f_name and f_name.endswith(".xlsx"): 
+        # ファイル名からすべての空白を取り除いて判定します
+        clean_f_name = f_name.replace(" ", "").replace("　", "")
+        
+        if "デモデータ" in clean_f_name:
+            if f_name.endswith(".xlsx"):
+                l2_file = os.path.join(root, f_name)
+                is_csv = False
+            elif f_name.endswith(".csv"):
+                l2_file = os.path.join(root, f_name)
+                is_csv = True
+                
+        if "有料データ_" in clean_f_name and (f_name.endswith(".xlsx") or f_name.endswith(".csv")): 
             paid_company_files.append(os.path.join(root, f_name))
 
-if l2_excel_file is None:
-    st.error("⚠️ フォルダ内に『デモデータ_面積・路線価.xlsx』が見つかりません。GitHubにアップロードされているか確認してください。")
+if l2_file is None:
+    st.error("⚠️ フォルダ内に『デモデータ』のファイルが見つかりません。GitHubのファイル名に空白などが含まれていないかご確認ください。")
 else:
-    df_l2 = pd.read_excel(l2_excel_file, header=1).fillna("")
+    # 📄 ファイル形式に合わせて読み込み方法を自動分岐（2行目ヘッダー対応）
+    try:
+        if is_csv:
+            df_l2 = pd.read_csv(l2_file, header=1).fillna("")
+        else:
+            df_l2 = pd.read_excel(l2_file, header=1).fillna("")
+    except Exception as e:
+        st.error(f"ファイルの読み込み中にエラーが発生しました: {e}")
+        st.stop()
+
     st.subheader("🔍 現場用・住所検索窓")
     search_query = st.text_input("土地の住所、または物件名を入力してください（例：九段南、赤坂見附、など）：", placeholder="例：東京都千代田区九段南一丁目2-1、など")
 
@@ -82,7 +102,7 @@ else:
                                 area_val = l2_row[c]
                                 break
                         if not area_val:
-                            area_val = l2_row.get("面積①（㎡）\n登記所備付データ", "データなし")
+                            area_val = next((l2_row[c] for c in df_l2.columns if "面積①" in str(c)), "データなし")
                         st.metric(label="🏢 算出面積", value=f"{area_val} ㎡" if "㎡" not in str(area_val) else str(area_val))
                         
                     with col2:
@@ -92,8 +112,12 @@ else:
                                 price_val = l2_row[c]
                                 break
                         if not price_val:
-                            price_val = l2_row.get("地価公示価格\n【L01_008】", "データなし")
-                        price_str = f"{price_val:,} 円/㎡" if isinstance(price_val, (int, float)) else f"{price_val}"
+                            price_val = next((l2_row[c] for c in df_l2.columns if "地価公示価格" in str(c)), "データなし")
+                        
+                        try:
+                            price_str = f"{int(float(price_val)):,} 円/㎡" if isinstance(price_val, (int, float)) or str(price_val).replace('.','',1).isdigit() else f"{price_val}"
+                        except:
+                            price_str = f"{price_val}"
                         st.metric(label="💰 前面道路路線価", value=price_str)
                         
                     with col3:
@@ -121,7 +145,11 @@ else:
                 matched_company_df = None
                 for comp_file in paid_company_files:
                     try:
-                        df_comp_master = pd.read_excel(comp_file).fillna("")
+                        if comp_file.endswith(".csv"):
+                            df_comp_master = pd.read_csv(comp_file).fillna("")
+                        else:
+                            df_comp_master = pd.read_excel(comp_file).fillna("")
+                            
                         comp_addr_col = None
                         for c in df_comp_master.columns:
                             if "address" in str(c).lower() or "住所" in str(c): 
@@ -133,7 +161,6 @@ else:
                         for comp_idx, comp_row in df_comp_master.iterrows():
                             comp_addr = str(comp_row[comp_addr_col]).strip()
                             clean_comp = comp_addr
-                            # SyntaxWarning対策でバックスラッシュを2つに修正
                             match = re.search(r"(\\d+)[-－‐](\\d+)(?:[-－‐](\\d+))?", comp_addr)
                             if match:
                                 chome = int(match.group(1))
