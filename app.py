@@ -41,27 +41,33 @@ current_dir = os.path.dirname(__file__) if "__file__" in locals() else "."
 l2_file = None
 paid_company_files = []
 
-# 📁 ファイルの自動探索
-for root, dirs, files in os.walk(current_dir):
-    for f_name in files:
-        clean_f_name = f_name.replace(" ", "").replace("　", "")
-        if "デモデータ" in clean_f_name:
-            l2_file = os.path.join(root, f_name)
-        if "有料データ_" in clean_f_name: 
-            paid_company_files.append(os.path.join(root, f_name))
+# 現在のフォルダにあるファイルをシンプルに全走査
+for f_name in os.listdir("."):
+    # 空白を完全に消去して判定
+    clean_f = f_name.replace(" ", "").replace("　", "")
+    
+    # 1. 「デモデータ」と名前に付くエクセルかCSVをL2に指定
+    if "デモデータ" in clean_f and (f_name.endswith(".xlsx") or f_name.endswith(".csv")):
+        l2_file = f_name
+        
+    # 2. 「有料データ」と名前に付くエクセルかCSVをリストにすべて格納
+    if "有料データ" in clean_f and (f_name.endswith(".xlsx") or f_name.endswith(".csv")):
+        paid_company_files.append(f_name)
 
+# 📄 読み込み処理（エラーガード）
 if l2_file is None:
     st.error("⚠️ フォルダ内に『デモデータ』のファイルが見つかりません。")
+    st.stop()
 else:
-    # 📄 中身がExcelかCSVかを力技で自動判別して読み込む
     try:
-        df_l2 = pd.read_excel(l2_file, header=1).fillna("")
-    except Exception:
-        try:
+        # 拡張子がxlsxならエクセル、それ以外（csv）ならCSVとしてスマートに読み込み
+        if l2_file.endswith(".xlsx"):
+            df_l2 = pd.read_excel(l2_file, header=1).fillna("")
+        else:
             df_l2 = pd.read_csv(l2_file, header=1).fillna("")
-        except Exception as e:
-            st.error(f"ファイルの読み込みに致命的なエラーが発生しました: {e}")
-            st.stop()
+    except Exception as e:
+        st.error(f"❌ デモデータファイルの読み込みに失敗しました: {e}")
+        st.stop()
 
     st.subheader("🔍 現場用・住所検索窓")
     search_query = st.text_input("土地の住所、または物件名を入力してください（例：九段南、赤坂見附、など）：", placeholder="例：東京都千代田区九段南一丁目2-1、など")
