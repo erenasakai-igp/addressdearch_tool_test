@@ -1,25 +1,55 @@
-import os, io, warnings, re
+import os
+import io
+import warnings
+import re
 import streamlit as st
 import pandas as pd
 
 warnings.filterwarnings("ignore")
-st.config.set_option("server.enableCORS", False)
-st.config.set_option("server.enableXsrfProtection", False)
-st.config.set_option("server.websocketAsByteArray", True)
 
+# ページ設定
 st.set_page_config(page_title="物件検索ツール", page_icon="🏢", layout="wide")
+
+# ==========================================
+# 🔒 シンプルな簡易パスワード認証機能
+# ==========================================
+CORRECT_PASSWORD = "demo2026"  # 👈 好きなパスワードに変更してください
+
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
+if not st.session_state["authenticated"]:
+    st.title("🏢 不動産ポテンシャル 現場用一発検索ツール")
+    st.subheader("🔑 セキュリティ認証")
+    user_password = st.text_input("閲覧パスワードを入力してください：", type="password")
+    if st.button("ログイン"):
+        if user_password == CORRECT_PASSWORD:
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("❌ パスワードが違います。")
+    st.stop() 
+# ==========================================
+
+# パスワード認証が通った後のメイン画面
 st.title("🏢 不動産ポテンシャル 現場用一発検索ツール")
 st.write("【公共データ × 有料データ 統合デモ画面】")
 
+# ファイルの探索ルートを現在のフォルダに変更（Streamlit Cloud対応）
+current_dir = os.path.dirname(__file__) if "__file__" in locals() else "."
+
 l2_excel_file = None
 paid_company_files = []
-for root, dirs, files in os.walk("/content"):
+
+for root, dirs, files in os.walk(current_dir):
     for f_name in files:
-        if "デモデータ" in f_name and f_name.endswith(".xlsx"): l2_excel_file = os.path.join(root, f_name)
-        if "有料データ_" in f_name and f_name.endswith(".xlsx"): paid_company_files.append(os.path.join(root, f_name))
+        if "デモデータ" in f_name and f_name.endswith(".xlsx"): 
+            l2_excel_file = os.path.join(root, f_name)
+        if "有料データ_" in f_name and f_name.endswith(".xlsx"): 
+            paid_company_files.append(os.path.join(root, f_name))
 
 if l2_excel_file is None:
-    st.error("⚠️ 左側のファイルエリアに『デモデータ_面積・路線価.xlsx』が見つかりません。")
+    st.error("⚠️ フォルダ内に『デモデータ_面積・路線価.xlsx』が見つかりません。GitHubにアップロードされているか確認してください。")
 else:
     df_l2 = pd.read_excel(l2_excel_file, header=1).fillna("")
     st.subheader("🔍 現場用・住所検索窓")
@@ -43,32 +73,47 @@ else:
                 
                 with st.container():
                     st.markdown(f"### 📍 検索地点： {l2_row[name_col]} （{target_address}）")
-                    col1, col2, col3,col4 = st.columns(4)
+                    col1, col2, col3, col4 = st.columns(4)
+                    
                     with col1:
-                        area_val = "データなし"
+                        area_val = ""
                         for c in l2_result.columns:
-                            if "面積" in str(c) and "土地利用" in str(c): area_val = l2_row[c]; break
-                        st.metric(label="🏢 算出面積", value=f"{area_val} ㎡")
+                            if "面積" in str(c) and "土地利用" in str(c) and l2_row[c] != "": 
+                                area_val = l2_row[c]
+                                break
+                        if not area_val:
+                            area_val = l2_row.get("面積①（㎡）\n登記所備付データ", "データなし")
+                        st.metric(label="🏢 算出面積", value=f"{area_val} ㎡" if "㎡" not in str(area_val) else str(area_val))
+                        
                     with col2:
-                        price_val = "データなし"
+                        price_val = ""
                         for c in l2_result.columns:
-                            if "路線価" in str(c): price_val = l2_row[c]; break
-                        price_str = f"{price_val:,} 円/㎡" if isinstance(price_val, (int, float)) and price_val > 0 else f"{price_val}"
+                            if "路線価" in str(c) and l2_row[c] != "": 
+                                price_val = l2_row[c]
+                                break
+                        if not price_val:
+                            price_val = l2_row.get("地価公示価格\n【L01_008】", "データなし")
+                        price_str = f"{price_val:,} 円/㎡" if isinstance(price_val, (int, float)) else f"{price_val}"
                         st.metric(label="💰 前面道路路線価", value=price_str)
+                        
                     with col3:
-                        price_val = "データなし"
+                        width_val = "データなし"
                         for c in l2_result.columns:
-                            if "L01_042" in str(c): price_val = l2_row[c]; break
-                        price_str = f"{price_val:,}m" if isinstance(price_val, (int, float)) and price_val > 0 else f"{price_val}"
-                        st.metric(label="📐 前面道路幅員", value=price_str)
+                            if "L01_042" in str(c): 
+                                width_val = str(l2_row[c]).strip()
+                                break
+                        width_str = width_val if "m" in width_val.lower() else f"{width_val} m"
+                        st.metric(label="📐 前面道路幅員", value=width_str)
+                        
                     with col4:
                         youto_val = "不明"
                         for c in l2_result.columns:
-                            if "L01_051" in str(c): youto_val = l2_row[c]; break
+                            if "L01_051" in str(c): 
+                                youto_val = l2_row[c]
+                                break
                         st.metric(label="🚧 用途区分名", value=str(youto_val))
 
                     with st.expander("📊 選択物件の『物件詳細データベース』（公共データ全情報）を表示"):
-                        # 1行の辞書データにして見やすく縦型テーブル（シリーズ形式）で表示
                         detail_df = pd.DataFrame(l2_row).rename(columns={idx: "詳細データ"})
                         st.dataframe(detail_df, use_container_width=True)
 
@@ -79,13 +124,17 @@ else:
                         df_comp_master = pd.read_excel(comp_file).fillna("")
                         comp_addr_col = None
                         for c in df_comp_master.columns:
-                            if "address" in str(c).lower() or "住所" in str(c): comp_addr_col = c; break
-                        if comp_addr_col is None: comp_addr_col = df_comp_master.columns[6]
+                            if "address" in str(c).lower() or "住所" in str(c): 
+                                comp_addr_col = c
+                                break
+                        if comp_addr_col is None: 
+                            comp_addr_col = df_comp_master.columns[6]
 
                         for comp_idx, comp_row in df_comp_master.iterrows():
                             comp_addr = str(comp_row[comp_addr_col]).strip()
                             clean_comp = comp_addr
-                            match = re.search(r"(\d+)[-－‐](\d+)(?:[-－‐](\d+))?", comp_addr)
+                            # SyntaxWarning対策でバックスラッシュを2つに修正
+                            match = re.search(r"(\\d+)[-－‐](\\d+)(?:[-－‐](\\d+))?", comp_addr)
                             if match:
                                 chome = int(match.group(1))
                                 banchi = match.group(2)
@@ -101,9 +150,12 @@ else:
 
                             if (target_address in clean_comp) or (clean_comp in target_address):
                                 matched_company_name = df_comp_master["company_name"].iloc[0]
-                                matched_company_df = df_comp_master; break
-                        if matched_company_name: break
-                    except: continue
+                                matched_company_df = df_comp_master
+                                break
+                        if matched_company_name: 
+                            break
+                    except: 
+                        continue
 
                 st.markdown("#### 🔒 有料情報連携ステータス")
                 if matched_company_name and matched_company_df is not None:
