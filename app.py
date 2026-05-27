@@ -39,38 +39,31 @@ st.write("【公共データ × 有料データ 統合デモ画面】")
 current_dir = os.path.dirname(__file__) if "__file__" in locals() else "."
 
 l2_file = None
-is_csv = False
 paid_company_files = []
 
-# 📁 ファイルの自動探索（【強化】スペースや文字のズレを完全に無視して「デモデータ」という文字だけで探します）
+# 📁 ファイルの自動探索
 for root, dirs, files in os.walk(current_dir):
     for f_name in files:
-        # ファイル名からすべての空白を取り除いて判定します
         clean_f_name = f_name.replace(" ", "").replace("　", "")
-        
         if "デモデータ" in clean_f_name:
-            if f_name.endswith(".xlsx"):
-                l2_file = os.path.join(root, f_name)
-                is_csv = False
-            elif f_name.endswith(".csv"):
-                l2_file = os.path.join(root, f_name)
-                is_csv = True
-                
-        if "有料データ_" in clean_f_name and (f_name.endswith(".xlsx") or f_name.endswith(".csv")): 
+            l2_file = os.path.join(root, f_name)
+        if "有料データ_" in clean_f_name: 
             paid_company_files.append(os.path.join(root, f_name))
 
 if l2_file is None:
-    st.error("⚠️ フォルダ内に『デモデータ』のファイルが見つかりません。GitHubのファイル名に空白などが含まれていないかご確認ください。")
+    st.error("⚠️ フォルダ内に『デモデータ』のファイルが見つかりません。")
 else:
-    # 📄 ファイル形式に合わせて読み込み方法を自動分岐（2行目ヘッダー対応）
+    # 📄 【超強化】拡張子に騙されず、中身がExcelかCSVかを力技で自動判別して読み込む処理
     try:
-        if is_csv:
+        # まずはExcelとして読み込んでみる
+        df_l2 = pd.read_excel(l2_file, header=1).fillna("")
+    except Exception:
+        try:
+            # Excelでエラーが出たら、拡張子が.xlsxでも中身はCSVとみなして読み込む（今回の救済ルート）
             df_l2 = pd.read_csv(l2_file, header=1).fillna("")
-        else:
-            df_l2 = pd.read_excel(l2_file, header=1).fillna("")
-    except Exception as e:
-        st.error(f"ファイルの読み込み中にエラーが発生しました: {e}")
-        st.stop()
+        except Exception as e:
+            st.error(f"ファイルの読み込みに致命的なエラーが発生しました: {e}")
+            st.stop()
 
     st.subheader("🔍 現場用・住所検索窓")
     search_query = st.text_input("土地の住所、または物件名を入力してください（例：九段南、赤坂見附、など）：", placeholder="例：東京都千代田区九段南一丁目2-1、など")
@@ -145,10 +138,11 @@ else:
                 matched_company_df = None
                 for comp_file in paid_company_files:
                     try:
-                        if comp_file.endswith(".csv"):
-                            df_comp_master = pd.read_csv(comp_file).fillna("")
-                        else:
+                        # 有料データ側も同様に、エラーが出たら自動でCSV判定する
+                        try:
                             df_comp_master = pd.read_excel(comp_file).fillna("")
+                        except:
+                            df_comp_master = pd.read_csv(comp_file).fillna("")
                             
                         comp_addr_col = None
                         for c in df_comp_master.columns:
@@ -199,3 +193,4 @@ else:
                 st.markdown("---")
         else:
             st.warning(f"「{search_query}」に一致する公共データが登録されていません。別のキーワードをお試しください。")
+            
